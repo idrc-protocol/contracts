@@ -6,9 +6,7 @@ import {OwnableUpgradeable} from "@openzeppelin-upgradeable/contracts/access/Own
 import {Initializable} from "@openzeppelin-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-
 contract IDRC is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
-
     address public hub;
 
     event MintedByHub(address indexed to, uint256 amount);
@@ -16,7 +14,7 @@ contract IDRC is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgrad
 
     error Unauthorized();
     error InvalidAddressOrAmount();
-    
+
     constructor() {
         _disableInitializers();
     }

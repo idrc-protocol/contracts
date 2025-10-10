@@ -12,7 +12,6 @@ import {HubStorage} from "./libraries/HubStorage.sol";
 import {IIDRC} from "./interfaces/IIDRC.sol";
 
 contract Hub is Initializable, OwnableUpgradeable, UUPSUpgradeable, AccessControlUpgradeable {
-
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     uint256 public constant PRECISION = 1e18;
@@ -87,7 +86,5 @@ contract Hub is Initializable, OwnableUpgradeable, UUPSUpgradeable, AccessContro
         emit PriceUpdated(priceId, price);
     }
 
-
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
 }

@@ -27,18 +27,29 @@ contract HubTest is Test {
         vm.startPrank(owner);
         asset = new IDRX("IDRX Token", "IDRX", 2);
 
+        uint256 nonce = vm.getNonce(owner);
+        address predictedIdrcImpl = vm.computeCreateAddress(owner, nonce);
+        address predictedHubImpl = vm.computeCreateAddress(owner, nonce + 1);
+        address predictedIdrcProxy = vm.computeCreateAddress(owner, nonce + 2);
+        address predictedHubProxy = vm.computeCreateAddress(owner, nonce + 3);
+
         idrcImpl = new IDRC();
         hubImpl = new Hub();
 
-        ERC1967Proxy idrcProxy = new ERC1967Proxy(address(idrcImpl), "");
+        assertEq(address(idrcImpl), predictedIdrcImpl);
+        assertEq(address(hubImpl), predictedHubImpl);
+
+        bytes memory idrcInitData = abi.encodeWithSelector(IDRC.initialize.selector, predictedHubProxy);
+        ERC1967Proxy idrcProxy = new ERC1967Proxy(address(idrcImpl), idrcInitData);
         ERC1967Proxy hubProxy = new ERC1967Proxy(
-            address(hubImpl),
-            abi.encodeWithSelector(Hub.initialize.selector, address(asset), address(idrcProxy), admin)
+            address(hubImpl), abi.encodeWithSelector(Hub.initialize.selector, address(asset), predictedIdrcProxy, admin)
         );
+
+        assertEq(address(idrcProxy), predictedIdrcProxy);
+        assertEq(address(hubProxy), predictedHubProxy);
 
         hub = Hub(address(hubProxy));
         idrc = IDRC(address(idrcProxy));
-        idrc.initialize(address(hub));
 
         vm.stopPrank();
 
@@ -64,11 +75,7 @@ contract HubTest is Test {
 
     function testSetPriceRevertsForNonAdmin() public {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                user,
-                hub.ADMIN_ROLE()
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user, hub.ADMIN_ROLE())
         );
         vm.prank(user);
         hub.setPrice(200);
@@ -133,9 +140,8 @@ contract HubTest is Test {
     function testRequestRedemptionRevertsForInsufficientBalance() public {
         assertEq(idrc.balanceOf(user), 0);
         vm.prank(user);
-        (bool success, bytes memory data) = address(hub).call(
-            abi.encodeWithSelector(Hub.requestRedemption.selector, address(asset), hub.PRECISION())
-        );
+        (bool success, bytes memory data) =
+            address(hub).call(abi.encodeWithSelector(Hub.requestRedemption.selector, address(asset), hub.PRECISION()));
 
         assertFalse(success);
         assertEq(bytes4(data), Hub.InsufficientBalance.selector);
