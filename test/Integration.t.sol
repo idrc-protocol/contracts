@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin-contracts/contracts/access/IAccessControl.sol";
 import {Hub} from "../src/Hub.sol";
+import {Reward} from "../src/RewardDistributor.sol";
 import {IDRC} from "../src/IDRC.sol";
 import {IDRX} from "../src/IDRX.sol";
 import {ERC1967Proxy} from "@openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -14,9 +15,11 @@ contract HubTest is Test {
     IDRC internal idrcImpl;
     Hub internal hub;
     IDRC internal idrc;
+    Reward internal rewardImpl;
+    Reward internal reward;
 
     address internal owner = makeAddr("OWNER");
-    address internal admin = makeAddr("ADMIN");
+    address internal adminManager = makeAddr("ADMIN_MANAGER");
     address internal user = makeAddr("USER");
     address internal other = makeAddr("OTHER");
 
@@ -30,19 +33,33 @@ contract HubTest is Test {
         uint256 nonce = vm.getNonce(owner);
         address predictedIdrcImpl = vm.computeCreateAddress(owner, nonce);
         address predictedHubImpl = vm.computeCreateAddress(owner, nonce + 1);
-        address predictedIdrcProxy = vm.computeCreateAddress(owner, nonce + 2);
-        address predictedHubProxy = vm.computeCreateAddress(owner, nonce + 3);
+        address predictedRewardImpl = vm.computeCreateAddress(owner, nonce + 2);
+        address predictedRewardProxy = vm.computeCreateAddress(owner, nonce + 3);
+        address predictedIdrcProxy = vm.computeCreateAddress(owner, nonce + 4);
+        address predictedHubProxy = vm.computeCreateAddress(owner, nonce + 5);
 
         idrcImpl = new IDRC();
         hubImpl = new Hub();
+        rewardImpl = new Reward();
 
         assertEq(address(idrcImpl), predictedIdrcImpl);
         assertEq(address(hubImpl), predictedHubImpl);
+        assertEq(address(rewardImpl), predictedRewardImpl);
 
-        bytes memory idrcInitData = abi.encodeWithSelector(IDRC.initialize.selector, predictedHubProxy);
+        bytes memory rewardInitData =
+            abi.encodeWithSelector(Reward.initialize.selector, predictedHubProxy, predictedIdrcProxy, adminManager);
+        ERC1967Proxy rewardProxy = new ERC1967Proxy(address(rewardImpl), rewardInitData);
+
+        assertEq(address(rewardProxy), predictedRewardProxy);
+
+        reward = Reward(address(rewardProxy));
+
+        bytes memory idrcInitData =
+            abi.encodeWithSelector(IDRC.initialize.selector, predictedHubProxy, predictedRewardProxy);
         ERC1967Proxy idrcProxy = new ERC1967Proxy(address(idrcImpl), idrcInitData);
         ERC1967Proxy hubProxy = new ERC1967Proxy(
-            address(hubImpl), abi.encodeWithSelector(Hub.initialize.selector, address(asset), predictedIdrcProxy, admin)
+            address(hubImpl),
+            abi.encodeWithSelector(Hub.initialize.selector, address(asset), predictedIdrcProxy, adminManager)
         );
 
         assertEq(address(idrcProxy), predictedIdrcProxy);
@@ -50,40 +67,23 @@ contract HubTest is Test {
 
         hub = Hub(address(hubProxy));
         idrc = IDRC(address(idrcProxy));
+        reward = Reward(address(rewardProxy));
 
         vm.stopPrank();
 
         asset.mint(user, USER_BALANCE);
-
-        vm.prank(admin);
-        hub.setPrice(PRICE);
     }
 
     function testInitializeGrantsRoles() public view {
-        assertTrue(hub.hasRole(hub.ADMIN_ROLE(), admin));
+        assertTrue(hub.hasRole(hub.ADMIN_ROLE(), adminManager));
         assertTrue(hub.hasRole(hub.DEFAULT_ADMIN_ROLE(), owner));
     }
 
-    function testSetPriceByAdminUpdatesPrice() public {
-        uint256 newPrice = 32000 * 1e2;
-
-        vm.prank(admin);
-        hub.setPrice(newPrice);
-
-        assertEq(hub.getPrice(), newPrice);
-    }
-
-    function testSetPriceRevertsForNonAdmin() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user, hub.ADMIN_ROLE())
-        );
-        vm.prank(user);
-        hub.setPrice(200);
-    }
+    // ====== Subscription Tests =======
 
     function testRequestSubscriptionMintsShares() public {
         uint256 amount = 32000 * 1e2;
-        uint256 expectedShares = (amount / PRICE) * hub.PRECISION();
+        uint256 expectedShares = amount;
 
         vm.startPrank(user);
         asset.approve(address(hub), amount);
@@ -116,9 +116,66 @@ contract HubTest is Test {
         vm.stopPrank();
     }
 
+    // ====== Withdrawal Owner Tests =======
+
+    function testWithdrawAssetByOwnerSuccess() public {
+        uint256 amount = 5000 * 1e2;
+
+        vm.startPrank(user);
+        asset.approve(address(hub), amount);
+        hub.requestSubscription(address(asset), amount);
+        vm.stopPrank();
+
+        assertEq(asset.balanceOf(address(hub)), amount);
+
+        vm.startPrank(adminManager);
+        hub.withdrawAsset(address(asset), amount);
+        vm.stopPrank();
+
+        assertEq(asset.balanceOf(address(hub)), 0);
+        assertEq(asset.balanceOf(adminManager), amount);
+    }
+
+    function testWithdrawAssetByNonOwnerReverts() public {
+        uint256 amount = 5000 * 1e2;
+
+        vm.startPrank(user);
+        asset.approve(address(hub), amount);
+        hub.requestSubscription(address(asset), amount);
+        vm.stopPrank();
+
+        assertEq(asset.balanceOf(address(hub)), amount);
+
+        vm.prank(other);
+        vm.expectRevert();
+        hub.withdrawAsset(address(asset), amount);
+    }
+
+    function testWithdrawAssetByOwnerRevertsForInsufficientBalance() public {
+        vm.prank(adminManager);
+        vm.expectRevert(Hub.InsufficientBalance.selector);
+        hub.withdrawAsset(address(asset), 1);
+    }
+
+    function testWithdrawAssetByOwnerRevertsForUnsupportedAsset() public {
+        IDRX unsupported = new IDRX("Other", "OTH", 2);
+
+        vm.prank(adminManager);
+        vm.expectRevert();
+        hub.withdrawAsset(address(unsupported), 1);
+    }
+
+    function testWithdrawAssetByOwnerRevertsForZeroAmount() public {
+        vm.prank(adminManager);
+        vm.expectRevert(Hub.InvalidAmount.selector);
+        hub.withdrawAsset(address(asset), 0);
+    }
+
+    // ====== Redemption Tests =======
+
     function testRequestRedemptionBurnsSharesAndTransfersAsset() public {
         uint256 amount = 32000 * 1e2;
-        uint256 shares = (amount / PRICE) * hub.PRECISION();
+        uint256 shares = amount;
 
         vm.startPrank(user);
         asset.approve(address(hub), amount);
@@ -147,12 +204,116 @@ contract HubTest is Test {
         assertEq(bytes4(data), Hub.InsufficientBalance.selector);
     }
 
-    function testConvertToSharesReturnsScaledAmount() public view {
-        uint256 amount = 32000 * 1e2;
-        uint256 expectedShares = (amount / PRICE) * hub.PRECISION();
-
-        assertEq(hub.convertToShares(amount), expectedShares);
+    // ====== Reward Distributor Tests =======
+    function testRewardDistributorInitializedCorrectly() public view {
+        assertEq(reward.hub(), address(hub));
+        assertEq(reward.idrc(), address(idrc));
     }
+
+    function testDistributeRewardsByOwner() public {
+        uint256 subscriptionAmount = 100_000 * 1e2;
+        uint256 rewardAmount = 10_000 * 1e2;
+
+        // First, user needs to subscribe so TVL > 0
+        vm.startPrank(user);
+        asset.approve(address(hub), subscriptionAmount);
+        hub.requestSubscription(address(asset), subscriptionAmount);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        asset.mint(address(adminManager), rewardAmount);
+
+        vm.startPrank(adminManager);
+        asset.approve(address(reward), rewardAmount);
+        reward.injectReward(rewardAmount);
+        vm.stopPrank();
+
+        // Verify rewards are tracked correctly
+        assertEq(reward.earned(user), rewardAmount);
+    }
+
+    function testInjectRewardByNonOwnerReverts() public {
+        uint256 rewardAmount = 10_000 * 1e2;
+
+        vm.prank(other);
+        vm.expectRevert();
+        reward.injectReward(rewardAmount);
+    }
+
+    function testInjectRewardRevertsForInsufficientBalance() public {
+        uint256 rewardAmount = 10_000 * 1e2;
+
+        vm.startPrank(owner);
+        vm.expectRevert();
+        reward.injectReward(rewardAmount);
+        vm.stopPrank();
+    }
+
+    function testInjectRewardRevertsForZeroAmount() public {
+        vm.startPrank(owner);
+        vm.expectRevert();
+        reward.injectReward(0);
+        vm.stopPrank();
+    }
+
+    // ====== User Reward Tests =======
+
+    function testUserRewardAccumulation() public {
+        uint256 subscriptionAmount = 100_000 * 1e2;
+        uint256 rewardAmount = 10_000 * 1e2;
+
+        vm.startPrank(user);
+        asset.approve(address(hub), subscriptionAmount);
+        hub.requestSubscription(address(asset), subscriptionAmount);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        asset.mint(address(adminManager), rewardAmount);
+
+        vm.startPrank(adminManager);
+        asset.approve(address(reward), rewardAmount);
+        reward.injectReward(rewardAmount);
+        vm.stopPrank();
+
+        assertEq(reward.earned(user), rewardAmount);
+    }
+
+    function testClaimRewardsByUser() public {
+        uint256 subscriptionAmount = 100_000 * 1e2;
+        uint256 rewardAmount = 10_000 * 1e2;
+
+        vm.startPrank(user);
+        asset.approve(address(hub), subscriptionAmount);
+        hub.requestSubscription(address(asset), subscriptionAmount);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        asset.mint(address(adminManager), rewardAmount);
+
+        vm.startPrank(adminManager);
+        asset.approve(address(reward), rewardAmount);
+        reward.injectReward(rewardAmount);
+        vm.stopPrank();
+
+        assertEq(idrc.balanceOf(user), subscriptionAmount);
+        assertEq(reward.earned(user), rewardAmount);
+
+        vm.prank(user);
+        reward.claimReward();
+
+        assertEq(idrc.balanceOf(user), subscriptionAmount);
+        assertEq(asset.balanceOf(user), USER_BALANCE - subscriptionAmount + rewardAmount);
+        assertEq(reward.earned(user), 0);
+    }
+
+    function testClaimRewardsByUserRevertsForNoRewards() public {
+        assertEq(reward.earned(user), 0);
+        vm.prank(user);
+        vm.expectRevert();
+        reward.claimReward();
+    }
+
+    // ====== IDRC Tests =======
 
     function testIDRCMintByHubRevertsForNonHub() public {
         vm.expectRevert(IDRC.Unauthorized.selector);

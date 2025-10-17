@@ -12,6 +12,8 @@ interface IIDRC is IERC20 {
     error Unauthorized();
     error InvalidAddressOrAmount();
 
+    function tvl() external view returns (uint256);
+
     // Functions
     function hub() external view returns (address);
 

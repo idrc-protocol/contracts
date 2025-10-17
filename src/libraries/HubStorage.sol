@@ -2,11 +2,13 @@
 pragma solidity ^0.8.20;
 
 import {IIDRC} from "../interfaces/IIDRC.sol";
+import {IRewardDistributor} from "../interfaces/IRewardDistributor.sol";
 
 library HubStorage {
     struct MainStorage {
         IIDRC idrc;
-        mapping(address => bool) assets;
+        IRewardDistributor rewardDistributor;
+        address asset;
         mapping(uint256 => uint256) prices;
         uint256 currentPriceId;
     }
