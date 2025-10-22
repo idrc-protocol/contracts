@@ -391,16 +391,45 @@ UNLICENSED - Private/Proprietary Code
 
 ## Contract Addresses
 
-After deployment, contracts will be deployed at:
-- IDRX: `<address>`
-- Hub Implementation: `<address>`
-- Hub Proxy: `<address>`
-- IDRC Implementation: `<address>`
-- IDRC Proxy: `<address>`
-- RewardDistributor Implementation: `<address>`
-- RewardDistributor Proxy: `<address>`
+### Base Sepolia Testnet
 
-(Update after deployment)
+**Proxy Contracts (User-Facing)**
+
+| Contract | Address | Explorer |
+|----------|---------|----------|
+| Hub Proxy | `0xf2CCA756D7dE98d54ed00697EA8Cf50D71ea0Dd1` | [View on BaseScan](https://sepolia.basescan.org/address/0xf2CCA756D7dE98d54ed00697EA8Cf50D71ea0Dd1) |
+| IDRC Proxy | `0xD3723bD07766d4993FBc936bEA1895227B556ea3` | [View on BaseScan](https://sepolia.basescan.org/address/0xD3723bD07766d4993FBc936bEA1895227B556ea3) |
+| RewardDistributor Proxy | `0xA77C8059B011Ad0DB426623d1c1B985E53fdb7db` | [View on BaseScan](https://sepolia.basescan.org/address/0xA77C8059B011Ad0DB426623d1c1B985E53fdb7db) |
+
+**Implementation Contracts**
+
+| Contract | Address | Explorer |
+|----------|---------|----------|
+| Hub Implementation | `0x4CAa4eC854306F961A2e476B62c4e6dacb8C23eF` | [View on BaseScan](https://sepolia.basescan.org/address/0x4CAa4eC854306F961A2e476B62c4e6dacb8C23eF) |
+| IDRC Implementation (v1) | `0x770d11A0583290f6B5BE500EE70720E3a3c01ea1` | [View on BaseScan](https://sepolia.basescan.org/address/0x770d11A0583290f6B5BE500EE70720E3a3c01ea1) |
+| IDRC Implementation (v2) | `0x1BdF47D9736DDA87269D71d256F791FC418e31F6` | [View on BaseScan](https://sepolia.basescan.org/address/0x1BdF47D9736DDA87269D71d256F791FC418e31F6) |
+| RewardDistributor Implementation | `0xd3D46E3bf01c947794Ce8aF52a30Fd6559a83a72` | [View on BaseScan](https://sepolia.basescan.org/address/0xd3D46E3bf01c947794Ce8aF52a30Fd6559a83a72) |
+
+**Supporting Contracts**
+
+| Contract | Address | Explorer |
+|----------|---------|----------|
+| IDRX Token (Mock Stablecoin) | `0x3E4c9e0a4F7F735401971dace92d18418da9c937` | [View on BaseScan](https://sepolia.basescan.org/address/0x3E4c9e0a4F7F735401971dace92d18418da9c937) |
+
+### Network Information
+
+- **Network**: Base Sepolia Testnet
+- **Chain ID**: 84532
+- **RPC URL**: https://sepolia.base.org
+- **Block Explorer**: https://sepolia.basescan.org
+
+### Important Notes
+
+⚠️ **Always interact with Proxy addresses**, not implementation addresses. The proxy addresses forward calls to the implementation while maintaining state.
+
+✅ **For mainnet deployment**, new addresses will be generated. The current addresses are for Base Sepolia testnet only.
+
+🔄 **Upgradeability**: Implementation contracts can be upgraded by the owner through the proxy pattern. The IDRCv2 implementation is an example of an upgraded version.
 
 ## Additional Resources
 
