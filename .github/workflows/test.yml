@@ -42,5 +42,5 @@ jobs:
 
       - name: Run Forge tests
         run: |
-          forge test -vvv -no-match-path Upgrades.t.sol
+          forge test --no-match-path Upgrades.t.sol -vvv
         id: test
